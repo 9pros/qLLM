@@ -1,0 +1,14 @@
+[package]
+name = "bqip-control"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bqip-autonomy = { path = "../bqip-autonomy" }
+bqip-core = { path = "../bqip-core" }
+bqip-training = { path = "../bqip-training" }
+bqip-transformer = { path = "../bqip-transformer" }
+blake3.workspace = true
+serde.workspace = true
+thiserror.workspace = true

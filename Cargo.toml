@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "crates/bqip-autonomy",
+    "crates/bqip-chat",
+    "crates/bqip-control",
+    "crates/bqip-core",
+    "crates/bqip-daemon",
+    "crates/bqip-evolver",
+    "crates/bqip-ingestor",
+    "crates/bqip-knowledge-graph",
+    "crates/bqip-multimodal",
+    "crates/bqip-training",
+    "crates/bqip-transformer",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.78"
+
+[workspace.dependencies]
+bincode = "1.3"
+blake3 = "1.5"
+memmap2 = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

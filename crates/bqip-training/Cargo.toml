@@ -1,0 +1,13 @@
+[package]
+name = "bqip-training"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bqip-core = { path = "../bqip-core" }
+bqip-transformer = { path = "../bqip-transformer" }
+bincode.workspace = true
+blake3.workspace = true
+serde.workspace = true
+thiserror.workspace = true
