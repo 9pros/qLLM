@@ -6,9 +6,11 @@ rust-version.workspace = true
 
 [dependencies]
 bqip-core = { path = "../bqip-core" }
+bqip-evolver = { path = "../bqip-evolver" }
 bqip-multimodal = { path = "../bqip-multimodal" }
 bqip-training = { path = "../bqip-training" }
 bqip-transformer = { path = "../bqip-transformer" }
 blake3.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+rand = "0.8"

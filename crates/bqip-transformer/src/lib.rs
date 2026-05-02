@@ -144,6 +144,10 @@ pub struct HybridConfig {
     pub alpha: f32,
     pub beta: f32,
     pub structural_feedback: f32,
+    /// Per-head phase deltas (length = num_heads). If empty, uses global phase_delta for all heads.
+    pub head_phase_deltas: Vec<u32>,
+    /// If true, head_phase_deltas become trainable parameters
+    pub learnable_head_delta: bool,
 }
 
 impl Default for HybridConfig {
@@ -161,6 +165,8 @@ impl Default for HybridConfig {
             alpha: std::f32::consts::FRAC_1_SQRT_2,
             beta: std::f32::consts::FRAC_1_SQRT_2,
             structural_feedback: 0.08,
+            head_phase_deltas: vec![2; 4],  // same as global phase_delta
+            learnable_head_delta: false,
         }
     }
 }
@@ -182,6 +188,18 @@ impl HybridConfig {
             return Err(TransformerError::InvalidConfig(
                 "d_model must be divisible by num_heads",
             ));
+        }
+        if self.head_phase_deltas.len() != self.num_heads {
+            return Err(TransformerError::InvalidConfig(
+                "head_phase_deltas length must equal num_heads",
+            ));
+        }
+        for delta in &self.head_phase_deltas {
+            if *delta > 64 {
+                return Err(TransformerError::InvalidConfig(
+                    "head_phase_deltas entries must be <= 64",
+                ));
+            }
         }
         if self.max_context == 0 {
             return Err(TransformerError::InvalidConfig(
@@ -260,6 +278,8 @@ pub struct ModelWeights {
     pub lm_head: Matrix,
     pub envelope_alpha: Matrix,
     pub envelope_beta: Matrix,
+    pub head_phase_deltas: Matrix,
+    pub phase_gate_bias: Matrix,  // shape: (1, num_heads)
 }
 
 impl ModelWeights {
@@ -288,6 +308,10 @@ impl ModelWeights {
             .validate_shape(1, self.config.d_model, "envelope_alpha")?;
         self.envelope_beta
             .validate_shape(1, self.config.d_model, "envelope_beta")?;
+        self.head_phase_deltas
+            .validate_shape(self.config.num_heads, 1, "head_phase_deltas")?;
+        self.phase_gate_bias
+            .validate_shape(1, self.config.num_heads, "phase_gate_bias")?;
         Ok(())
     }
 }
@@ -306,6 +330,8 @@ pub struct HybridTransformer {
     lm_head: Matrix,
     envelope_alpha: Matrix,
     envelope_beta: Matrix,
+    head_phase_deltas: Matrix,
+    phase_gate_bias: Matrix,
 }
 
 impl HybridTransformer {
@@ -348,6 +374,16 @@ impl HybridTransformer {
             config.d_model,
             b"bqip-transformer:env-beta",
         );
+        let head_phase_deltas = Matrix::from_data(
+            config.num_heads,
+            1,
+            config.head_phase_deltas.iter().map(|&d| d as f32).collect(),
+        )?;
+        let phase_gate_bias = Matrix::deterministic(
+            1,
+            config.num_heads,
+            b"bqip-transformer:phase-gate-bias",
+        );
 
         Ok(Self {
             config,
@@ -362,6 +398,8 @@ impl HybridTransformer {
             lm_head,
             envelope_alpha,
             envelope_beta,
+            head_phase_deltas,
+            phase_gate_bias,
         })
     }
 
@@ -380,6 +418,8 @@ impl HybridTransformer {
             lm_head: weights.lm_head,
             envelope_alpha: weights.envelope_alpha,
             envelope_beta: weights.envelope_beta,
+            head_phase_deltas: weights.head_phase_deltas,
+            phase_gate_bias: weights.phase_gate_bias,
         })
     }
 
@@ -397,6 +437,8 @@ impl HybridTransformer {
             lm_head: self.lm_head.clone(),
             envelope_alpha: self.envelope_alpha.clone(),
             envelope_beta: self.envelope_beta.clone(),
+            head_phase_deltas: self.head_phase_deltas.clone(),
+            phase_gate_bias: self.phase_gate_bias.clone(),
         }
     }
 
@@ -442,6 +484,18 @@ impl HybridTransformer {
 
     pub fn config(&self) -> &HybridConfig {
         &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut HybridConfig {
+        &mut self.config
+    }
+
+    pub fn increment_phase_delta(&mut self, inc: u32) {
+        self.config.phase_delta = (self.config.phase_delta + inc).min(64);
+    }
+
+    pub fn lm_head(&self) -> &Matrix {
+        &self.lm_head
     }
 
     pub fn forward(
@@ -565,6 +619,7 @@ impl HybridTransformer {
                 self.config.num_heads,
                 self.config.delta_step,
                 self.config.forget_floor,
+                &self.config.head_phase_deltas,
             ),
         };
 
@@ -1702,6 +1757,7 @@ fn gated_deltanet_mix(
     num_heads: usize,
     delta_step: f32,
     forget_floor: f32,
+    head_phase_deltas: &[u32],
 ) -> Vec<Vec<f32>> {
     let d_model = queries.first().map_or(0, Vec::len);
     let head_dim = d_model / num_heads;
@@ -1719,9 +1775,18 @@ fn gated_deltanet_mix(
             let write_gate = head_gate(&write_gates[index], head, head_dim);
             let forget_gate = forget_floor
                 + (1.0 - forget_floor) * head_gate(&forget_gates[index], head, head_dim);
+            
+            // Per-head phase delta: coarse-grain coherence signature
+            let head_delta = head_phase_deltas[head];
+            let coherence_sig = envelopes[index].coherence_sig;
+            let coarse_sig = if head_delta >= 64 {
+                0
+            } else {
+                coherence_sig >> head_delta
+            };
             let bank_key = FastWeightBankKey {
                 head,
-                coherence_sig: envelopes[index].coherence_sig,
+                coherence_sig: coarse_sig,
             };
             let bank = phase_banks
                 .entry(bank_key)

@@ -1,11 +1,19 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use bqip_core::{phase_project, PhaseEnvelope, Register};
 use bqip_transformer::{HybridTransformer, LazyBqipMemory, Matrix, ModelWeights, TransformerError};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+
+fn timestamp() -> String {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(d) => format!("{}.{:03}", d.as_secs(), d.subsec_millis()),
+        Err(_) => "unknown".to_string(),
+    }
+}
 
 const CORPUS_MAGIC: &[u8; 8] = b"BQIPTRN1";
 const METRICS_RECORD_MAGIC: &[u8; 8] = b"BQIPMET1";
@@ -758,12 +766,23 @@ impl HybridTrainer {
             self.model.config().max_context,
             corpus,
         )?;
+        println!("  📊 Evaluating initial metrics...");
         let initial = evaluate(&self.model, corpus)?;
+        println!("     initial loss = {:.4}, acc = {:.2}%", 
+            initial.mean_loss, initial.accuracy * 100.0);
         let mut history = Vec::with_capacity(self.config.epochs);
         for epoch_index in 0..self.config.epochs {
-            history.push(self.train_epoch(corpus, epoch_index)?);
+            println!("  → Epoch {}/{} starting", epoch_index+1, self.config.epochs);
+            let metrics = self.train_epoch(corpus, epoch_index)?;
+            println!("     epoch {}/{}: loss={:.4}, acc={:.2}%, decoh={:.4}", 
+                epoch_index+1, self.config.epochs,
+                metrics.mean_loss, metrics.accuracy * 100.0, metrics.mean_decoherence);
+            history.push(metrics);
         }
+        println!("  📊 Evaluating final metrics...");
         let final_metrics = evaluate(&self.model, corpus)?;
+        println!("     final loss = {:.4}, acc = {:.2}%", 
+            final_metrics.mean_loss, final_metrics.accuracy * 100.0);
         Ok(TrainedModel {
             model: self.model,
             report: TrainingReport {
@@ -781,18 +800,21 @@ impl HybridTrainer {
         split: &CorpusSplit,
         ledger: &mut MetricsLedger,
     ) -> Result<SplitTrainedModel, TrainingError> {
-        split.validate()?;
-        validate_model_corpus(
-            self.model.config().vocab_size,
-            self.model.config().max_context,
-            &split.train,
-        )?;
-        let initial = evaluate(&self.model, &split.train)?;
+        println!("  📊 Evaluating initial metrics...");
+        let initial = {
+            println!("  [{}] Starting evaluate()...", timestamp());
+            let result = evaluate(&self.model, &split.train)?;
+            println!("  [{}] evaluate() returned", timestamp());
+            result
+        };
+        println!("     initial loss = {:.4}, acc = {:.2}%", 
+            initial.mean_loss, initial.accuracy * 100.0);
         ledger.append(MetricsLedgerEvent::Evaluation {
             split: EvalSplit::Train,
             metrics: initial.clone(),
         })?;
         if let Some(validation) = &split.validation {
+            println!("  📊 Evaluating validation split...");
             ledger.append(MetricsLedgerEvent::Evaluation {
                 split: EvalSplit::Validation,
                 metrics: evaluate(&self.model, validation)?,
@@ -805,6 +827,18 @@ impl HybridTrainer {
             ledger.append(MetricsLedgerEvent::Epoch {
                 metrics: metrics.clone(),
             })?;
+            // Live progress output
+            println!(
+                "  Epoch {}/{}: loss={:.4}, acc={:.2}%, decoh={:.4}, α_err={:.4}, β_err={:.4}",
+                epoch_index + 1,
+                self.config.epochs,
+                metrics.mean_loss,
+                metrics.accuracy * 100.0,
+                metrics.mean_decoherence,
+                metrics.mean_envelope_alpha_error,
+                metrics.mean_envelope_beta_error
+            );
+            std::io::Write::flush(&mut std::io::stdout()).unwrap();
             if let Some(validation) = &split.validation {
                 ledger.append(MetricsLedgerEvent::Evaluation {
                     split: EvalSplit::Validation,
@@ -863,6 +897,7 @@ impl HybridTrainer {
         corpus: &TrainingCorpus,
         epoch_index: usize,
     ) -> Result<EpochMetrics, TrainingError> {
+        println!("  → Epoch {}/{} starting", epoch_index+1, self.config.epochs);
         let mut weights = self.model.weights();
         let vocab_size = weights.config.vocab_size;
         let d_model = weights.config.d_model;
