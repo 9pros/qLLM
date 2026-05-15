@@ -1,8 +1,141 @@
+use blake3::Hash;
+use serde::{Deserialize, Serialize};
+
+pub mod tepe_engine;
+pub mod collapse_commit;
+
 use bqip_core::{
     derive_register_id, phase_project, DualState, InterfaceKind, PhaseEnvelope, Register,
     RegisterId, RegisterLane, REGISTER_BYTES,
 };
-use serde::{Deserialize, Serialize};
+
+/// TEPE: Twin-Encoded Phase Evolution genome types
+/// Ctwin = twin genotype (envelope parameters, hyperangular vectors, ORL backpointers)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TwinGenome {
+    pub id: u64,
+    pub generation: u32,
+    pub envelope: PhaseEnvelope,
+    /// Hyperangular rotation vector for rotational transformer
+    pub ha_vector: [f32; 4],
+    /// ORL backpointer hash for replay verification
+    pub orl_backpointer: [u8; REGISTER_BYTES],
+    /// Crypto binding hash
+    pub crypto_binding: [u8; REGISTER_BYTES],
+    /// Lane binding identifier
+    pub lane_binding: RegisterLane,
+}
+
+impl TwinGenome {
+    pub fn seed(
+        id: u64,
+        generation: u32,
+        envelope: PhaseEnvelope,
+        node_public_key: &[u8; REGISTER_BYTES],
+        seed_material: &[u8],
+    ) -> Self {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"tepe-twin-seed");
+        hasher.update(&id.to_le_bytes());
+        hasher.update(&generation.to_le_bytes());
+        hasher.update(seed_material);
+        let hash = hasher.finalize();
+        
+        // Derive ha_vector from hash
+        let mut ha_vector = [0.0f32; 4];
+        for i in 0..4 {
+            let bytes: [u8; 4] = hash.as_bytes()[i*4..(i+1)*4].try_into().unwrap();
+            ha_vector[i] = (u32::from_le_bytes(bytes) as f32 / u32::MAX as f32) * std::f32::consts::PI * 2.0;
+        }
+        
+        let mut hasher2 = blake3::Hasher::new();
+        hasher2.update(b"orl-backpointer");
+        hasher2.update(&id.to_le_bytes());
+        hasher2.update(seed_material);
+        let orl_backpointer = *hasher2.finalize().as_bytes();
+        
+        let mut hasher3 = blake3::Hasher::new();
+        hasher3.update(b"crypto-binding");
+        hasher3.update(node_public_key);
+        hasher3.update(&id.to_le_bytes());
+        let crypto_binding = *hasher3.finalize().as_bytes();
+        
+        Self {
+            id,
+            generation,
+            envelope,
+            ha_vector,
+            orl_backpointer,
+            crypto_binding,
+            lane_binding: RegisterLane::GenericEndpoint,
+        }
+    }
+    
+    pub fn validate(&self) -> Result<(), EvolverError> {
+        self.envelope.validate()?;
+        for val in &self.ha_vector {
+            if !val.is_finite() {
+                return Err(EvolverError::InvalidHaVector);
+            }
+        }
+        Ok(())
+    }
+    
+    /// Decode Ctwin to Clive phenotype using U_decode = R_HF * R_HA * O
+    pub fn decode_to_phenotype(&self, live: Register) -> LivePhenotype {
+        // Apply high-frequency rotation from envelope
+        let hf_rotation = self.envelope.hf_rotation;
+        let ha_rotation = self.ha_vector.iter().map(|v| v.abs()).sum::<f32>() / 4.0;
+        
+        // Build decoded envelope with rotational parameters
+        let decoded_envelope = PhaseEnvelope::unchecked_rotational(
+            self.envelope.coherence_sig,
+            self.envelope.alpha,
+            self.envelope.beta,
+            self.envelope.resuperposition_n,
+            hf_rotation,
+            ha_rotation,
+            self.envelope.phase_offset,
+        );
+        
+        // Apply rotational projection
+        let phenotype_register = decoded_envelope.apply_rotational(live);
+        
+        LivePhenotype {
+            register_id: derive_register_id(
+                self.lane_binding,
+                self.id,
+                &self.crypto_binding[..],
+                InterfaceKind::Application,
+                &self.crypto_binding,
+            ),
+            envelope: decoded_envelope,
+            state: DualState::new(live, phenotype_register),
+            routing_lane: self.lane_binding,
+        }
+    }
+}
+
+/// Clive = live phenotype (decoded routing lanes, vFPGA mappings, network bindings)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LivePhenotype {
+    pub register_id: RegisterId,
+    pub envelope: PhaseEnvelope,
+    pub state: DualState,
+    pub routing_lane: RegisterLane,
+}
+
+impl LivePhenotype {
+    pub fn encode_back_to_twin(&self, id: u64, generation: u32) -> TwinGenome {
+        TwinGenome::seed(
+            id,
+            generation,
+            self.envelope,
+            self.register_id.as_bytes(),
+            self.state.live.as_bytes(),
+        )
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CandidateGenome {
@@ -606,6 +739,8 @@ pub enum EvolverError {
     PopulationTooSmall { population_limit: usize },
     #[error("invalid policy: {0}")]
     InvalidPolicy(&'static str),
+    #[error("hyperangular vector contains non-finite values")]
+    InvalidHaVector,
     #[error(transparent)]
     Core(#[from] bqip_core::CoreError),
 }
