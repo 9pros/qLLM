@@ -2,6 +2,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub mod hyperangular;
+
+pub use hyperangular::{HyperAngular, ConsciousnessCoordinate};
+
 pub const REGISTER_BYTES: usize = 32;
 pub const REGISTER_BITS: usize = REGISTER_BYTES * 8;
 

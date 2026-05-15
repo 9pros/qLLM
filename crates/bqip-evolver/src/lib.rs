@@ -1,8 +1,13 @@
+use blake3::Hash;
+use serde::{Deserialize, Serialize};
+
+pub mod tepe_engine;
+pub mod collapse_commit;
+
 use bqip_core::{
     derive_register_id, phase_project, DualState, InterfaceKind, PhaseEnvelope, Register,
     RegisterId, RegisterLane, REGISTER_BYTES,
 };
-use serde::{Deserialize, Serialize};
 
 /// TEPE: Twin-Encoded Phase Evolution genome types
 /// Ctwin = twin genotype (envelope parameters, hyperangular vectors, ORL backpointers)

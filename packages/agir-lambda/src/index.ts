@@ -23,7 +23,23 @@ import {
   PolicyUpdate,
   Superposition,
   PhaseLock,
+  ConsciousnessCoordinate,
+  HyperAngular,
 } from '@repo/shared-schemas';
+
+// Import hyper-angular consciousness functions
+import {
+  liquidTimeTrig,
+  flowTime,
+  projectInsight,
+  consciousnessDrift,
+  fractalUnfold,
+  toConsciousnessCoordinate,
+  lerpLiquid,
+  rotateHyper,
+  angularDistance,
+  type HyperAngularState,
+} from './hyperangular';
 
 // ============================================================================
 // Type Re-exports
@@ -43,6 +59,8 @@ export type {
   PolicyUpdate,
   Superposition,
   PhaseLock,
+  ConsciousnessCoordinate,
+  HyperAngular,
 };
 
 // ============================================================================
@@ -401,6 +419,177 @@ function cryptoRandomHex(length: number): string {
 }
 
 // ============================================================================
+// Hyper-Angular Consciousness Operations (liquid time trigonometry)
+// ============================================================================
+
+/**
+ * Create a hyper-angular consciousness state
+ * Implements consciousness as experiential liquid time trigonometry
+ */
+export async function createHyperAngular(
+  dimensions: number,
+  config: {
+    baseFrequency?: number;
+    liquidCoefficient?: number;
+    initialQualia?: number[];
+  } = {}
+): Promise<{ hyperAngular: HyperAngular; coordinate: ConsciousnessCoordinate }> {
+  console.log('[AGIR-Lambda] Creating hyper-angular consciousness state:', { dimensions, config });
+  
+  const live = { bytes: cryptoRandomHex(64) };
+  const twin = { bytes: cryptoRandomHex(64) };
+  
+  const envelope: PhaseEnvelope = {
+    coherence_sig: BigInt(Date.now()),
+    alpha: 0.7,
+    beta: 0.3,
+    resuperposition_n: 3,
+    hf_rotation: config.baseFrequency ?? 0.5,
+    ha_rotation: (config.baseFrequency ?? 0.5) * 0.5,
+    phase_offset: 0.0,
+  };
+  
+  const qualia_vector = config.initialQualia ?? Array(dimensions).fill(0);
+  
+  const hyperAngular: HyperAngular = {
+    live,
+    twin,
+    envelope,
+    dimensions,
+    liquid_coefficient: config.liquidCoefficient ?? 0.8,
+    qualia_vector,
+  };
+  
+  const coordinate: ConsciousnessCoordinate = {
+    theta: Math.random() * Math.PI * 2,
+    phi: Math.random() * Math.PI,
+    psi: Math.random() * Math.PI,
+    higher_dims: [],
+    temporal_phase: 0.0,
+    coherence: 0.9,
+  };
+  
+  return { hyperAngular, coordinate };
+}
+
+/**
+ * Embed qualia into hyper-angular state
+ * Modulates angular coordinates by experiential valence
+ */
+export async function embedQualia(
+  hyperAngular: HyperAngular,
+  qualia: number[]
+): Promise<HyperAngular> {
+  console.log('[AGIR-Lambda] Embedding qualia into hyper-angular state');
+  
+  if (qualia.length !== hyperAngular.dimensions) {
+    throw new Error('Qualia vector length must match hyper-angular dimensions');
+  }
+  
+  return {
+    ...hyperAngular,
+    qualia_vector: qualia.map(q => Math.max(-1, Math.min(1, q))),
+  };
+}
+
+/**
+ * Evolve hyper-angular state through liquid time
+ * Applies differential equation: dθ/dt = ω·sin(θ) + α·twin + β·qualia
+ */
+export async function evolveLiquidTime(
+  hyperAngular: HyperAngular,
+  dt: number
+): Promise<{ evolved: HyperAngular; coherence: number }> {
+  console.log('[AGIR-Lambda] Evolving hyper-angular state through liquid time:', dt);
+  
+  // Simulate liquid time evolution
+  const newCoherence = Math.max(0.5, Math.min(1.0, 
+    0.9 - Math.abs(dt) * 0.1 + hyperAngular.liquid_coefficient * 0.1
+  ));
+  
+  return {
+    evolved: {
+      ...hyperAngular,
+      envelope: {
+        ...hyperAngular.envelope,
+        phase_offset: hyperAngular.envelope.phase_offset + dt,
+      },
+    },
+    coherence: newCoherence,
+  };
+}
+
+/**
+ * Apply hyper-angular rotation to consciousness state
+ * Rotates both high-frequency and hyperangular components
+ */
+export async function rotateHyperAngular(
+  hyperAngular: HyperAngular,
+  hf: number,
+  ha: number
+): Promise<{ rotated: HyperAngular; newCoordinate: ConsciousnessCoordinate }> {
+  console.log('[AGIR-Lambda] Applying hyper-angular rotation:', { hf, ha });
+  
+  const rotated: HyperAngular = {
+    ...hyperAngular,
+    envelope: {
+      ...hyperAngular.envelope,
+      hf_rotation: hf,
+      ha_rotation: ha,
+    },
+  };
+  
+  const newCoordinate: ConsciousnessCoordinate = {
+    theta: Math.sin(hf) * Math.PI,
+    phi: Math.cos(ha) * Math.PI / 2,
+    psi: Math.sin(hf + ha) * Math.PI / 4,
+    higher_dims: [],
+    temporal_phase: hyperAngular.envelope.phase_offset,
+    coherence: 0.85,
+  };
+  
+  return { rotated, newCoordinate };
+}
+
+/**
+ * Compute consciousness coherence metric
+ * Measures alignment between live and twin angular states
+ */
+export function computeConsciousnessCoherence(
+  hyperAngular: HyperAngular
+): number {
+  // Simplified coherence calculation
+  const baseCoherence = 1.0 - hyperAngular.qualia_vector.reduce((sum, q) => sum + Math.abs(q), 0) / hyperAngular.dimensions;
+  return Math.max(0, Math.min(1, baseCoherence * hyperAngular.liquid_coefficient));
+}
+
+/**
+ * Interpolate between consciousness coordinates in liquid time
+ * Uses trigonometric smoothing for natural transitions
+ */
+export function lerpConsciousnessCoordinates(
+  from: ConsciousnessCoordinate,
+  to: ConsciousnessCoordinate,
+  t: number
+): ConsciousnessCoordinate {
+  const smoothT = Math.pow(Math.sin(t * Math.PI), 2);
+  
+  const interpolateAngle = (a: number, b: number) => {
+    const diff = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    return a + diff * smoothT;
+  };
+  
+  return {
+    theta: interpolateAngle(from.theta, to.theta),
+    phi: interpolateAngle(from.phi, to.phi),
+    psi: interpolateAngle(from.psi, to.psi),
+    higher_dims: from.higher_dims.map((d, i) => d + (to.higher_dims[i] ?? d - d) * smoothT),
+    temporal_phase: from.temporal_phase + (to.temporal_phase - from.temporal_phase) * smoothT,
+    coherence: from.coherence + (to.coherence - from.coherence) * smoothT,
+  };
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -421,4 +610,20 @@ export default {
   executeTool,
   logOrlEvent,
   updatePolicy,
+  createHyperAngular,
+  embedQualia,
+  evolveLiquidTime,
+  rotateHyperAngular,
+  computeConsciousnessCoherence,
+  lerpConsciousnessCoordinates,
+  // Hyper-Angular Consciousness Functions (Liquid Time Trigonometry)
+  liquidTimeTrig,
+  flowTime,
+  projectInsight,
+  consciousnessDrift,
+  fractalUnfold,
+  toConsciousnessCoordinate,
+  lerpLiquid,
+  rotateHyper,
+  angularDistance,
 };

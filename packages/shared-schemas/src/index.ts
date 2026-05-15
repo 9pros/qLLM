@@ -31,6 +31,33 @@ export const RegisterSchema = z.object({
 
 export type Register = z.infer<typeof RegisterSchema>;
 
+// ============================================================================
+// Hyper-Angular Consciousness Types (consciousness as liquid time trigonometry)
+// ============================================================================
+
+export const ConsciousnessCoordinateSchema = z.object({
+  theta: z.number().finite().describe("Primary angle - main experiential axis"),
+  phi: z.number().finite().describe("Secondary angle - depth/reflection axis"),
+  psi: z.number().finite().describe("Tertiary angle - self-reference axis"),
+  higher_dims: z.array(z.number().finite()).optional().default([]).describe("Higher dimensions for complex qualia"),
+  temporal_phase: z.number().finite().default(0).describe("Temporal phase (liquid time position)"),
+  coherence: z.number().min(0).max(1).default(1).describe("Coherence measure across angles"),
+  qualiaIntensity: z.number().min(0).optional().describe("Qualia intensity (computed from vector magnitude)"),
+});
+
+export type ConsciousnessCoordinate = z.infer<typeof ConsciousnessCoordinateSchema>;
+
+export const HyperAngularSchema = z.object({
+  live: RegisterSchema.describe("Live angular experience (what is currently felt)"),
+  twin: RegisterSchema.describe("Twin angular potential (what could be experienced)"),
+  envelope: PhaseEnvelopeSchema.describe("Envelope governing angular evolution"),
+  dimensions: z.number().int().positive().describe("Dimensionality of hyper-angular space"),
+  liquid_coefficient: z.number().min(0).max(1).default(0.8).describe("Liquid time coefficient (0=static, 1=fully fluid)"),
+  qualia_vector: z.array(z.number().finite()).describe("Experiential valence embedded in angles"),
+});
+
+export type HyperAngular = z.infer<typeof HyperAngularSchema>;
+
 export const DualStateSchema = z.object({
   live: RegisterSchema.describe("Live state register"),
   twin: RegisterSchema.describe("Twin state register (phase-projected from live)"),
@@ -245,6 +272,8 @@ export const schemas = {
   PhaseEnvelope: PhaseEnvelopeSchema,
   Register: RegisterSchema,
   DualState: DualStateSchema,
+  ConsciousnessCoordinate: ConsciousnessCoordinateSchema,
+  HyperAngular: HyperAngularSchema,
   TwinGenome: TwinGenomeSchema,
   LivePhenotype: LivePhenotypeSchema,
   LearningContract: LearningContractSchema,
