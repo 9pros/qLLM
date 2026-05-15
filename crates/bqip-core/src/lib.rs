@@ -113,6 +113,10 @@ pub struct PhaseEnvelope {
     pub alpha: f32,
     pub beta: f32,
     pub resuperposition_n: u32,
+    /// Rotational extensions for hyperfractal transformer
+    pub hf_rotation: f32,  // High-frequency rotation parameter
+    pub ha_rotation: f32,  // Hyperangular rotation parameter (multi-axis)
+    pub phase_offset: f32, // Offset for liquid time-constant behavior
 }
 
 impl PhaseEnvelope {
@@ -127,6 +131,31 @@ impl PhaseEnvelope {
             alpha,
             beta,
             resuperposition_n,
+            hf_rotation: 0.0,
+            ha_rotation: 0.0,
+            phase_offset: 0.0,
+        };
+        envelope.validate()?;
+        Ok(envelope)
+    }
+
+    pub fn new_rotational(
+        coherence_sig: u64,
+        alpha: f32,
+        beta: f32,
+        resuperposition_n: u32,
+        hf_rotation: f32,
+        ha_rotation: f32,
+        phase_offset: f32,
+    ) -> Result<Self, CoreError> {
+        let envelope = Self {
+            coherence_sig,
+            alpha,
+            beta,
+            resuperposition_n,
+            hf_rotation,
+            ha_rotation,
+            phase_offset,
         };
         envelope.validate()?;
         Ok(envelope)
@@ -143,12 +172,40 @@ impl PhaseEnvelope {
             alpha,
             beta,
             resuperposition_n,
+            hf_rotation: 0.0,
+            ha_rotation: 0.0,
+            phase_offset: 0.0,
+        }
+    }
+
+    pub const fn unchecked_rotational(
+        coherence_sig: u64,
+        alpha: f32,
+        beta: f32,
+        resuperposition_n: u32,
+        hf_rotation: f32,
+        ha_rotation: f32,
+        phase_offset: f32,
+    ) -> Self {
+        Self {
+            coherence_sig,
+            alpha,
+            beta,
+            resuperposition_n,
+            hf_rotation,
+            ha_rotation,
+            phase_offset,
         }
     }
 
     pub fn balanced(coherence_sig: u64) -> Self {
         let value = std::f32::consts::FRAC_1_SQRT_2;
         Self::unchecked(coherence_sig, value, value, 0)
+    }
+
+    pub fn balanced_rotational(coherence_sig: u64, hf_rotation: f32, ha_rotation: f32) -> Self {
+        let value = std::f32::consts::FRAC_1_SQRT_2;
+        Self::unchecked_rotational(coherence_sig, value, value, 0, hf_rotation, ha_rotation, 0.0)
     }
 
     pub fn live_trusted(coherence_sig: u64) -> Self {
@@ -163,12 +220,43 @@ impl PhaseEnvelope {
         if (norm - 1.0).abs() > 1.0e-4 {
             return Err(CoreError::AmplitudeNotNormalized { norm });
         }
+        // Validate rotational parameters
+        if !self.hf_rotation.is_finite() || !self.ha_rotation.is_finite() || !self.phase_offset.is_finite() {
+            return Err(CoreError::InvalidRotationalParameters);
+        }
         Ok(())
     }
 
     pub fn compatible_with(&self, other: &Self, delta: u32) -> bool {
         self.coherence_sig == other.coherence_sig
             && self.resuperposition_n.abs_diff(other.resuperposition_n) <= delta
+            && (self.hf_rotation - other.hf_rotation).abs() < delta as f32 * 0.1
+            && (self.ha_rotation - other.ha_rotation).abs() < delta as f32 * 0.1
+    }
+
+    /// Apply rotational projection for hyperfractal transformer
+    pub fn apply_rotational(&self, live: Register) -> Register {
+        let base_projection = phase_project(live, *self);
+        // Apply high-frequency rotation
+        let hf_shift = ((self.hf_rotation * REGISTER_BITS as f32).sin() * REGISTER_BITS as f32 / 2.0) as u16;
+        let rotated = base_projection.rotate_left_bits(hf_shift);
+        // Apply hyperangular offset (XOR with phase-derived mask)
+        if self.ha_rotation.abs() > f32::EPSILON {
+            let ha_mask = self.derive_ha_mask();
+            rotated.xor(&ha_mask)
+        } else {
+            rotated
+        }
+    }
+
+    /// Derive hyperangular mask from rotation parameters
+    fn derive_ha_mask(&self) -> Register {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&self.coherence_sig.to_le_bytes());
+        hasher.update(&self.hf_rotation.to_bits().to_le_bytes());
+        hasher.update(&self.ha_rotation.to_bits().to_le_bytes());
+        hasher.update(&self.phase_offset.to_bits().to_le_bytes());
+        Register::from_bytes(*hasher.finalize().as_bytes())
     }
 }
 
@@ -269,6 +357,8 @@ pub enum CoreError {
     InvalidAmplitude,
     #[error("phase amplitudes must satisfy alpha^2 + beta^2 = 1, got {norm}")]
     AmplitudeNotNormalized { norm: f32 },
+    #[error("rotational parameters must be finite")]
+    InvalidRotationalParameters,
 }
 
 #[inline]
